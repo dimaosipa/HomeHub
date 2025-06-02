@@ -40,8 +40,8 @@ class BonjourService:
             clean_server_name = server_name.replace(' ', '-').replace('_', '-')
             unique_server_name = f"{clean_server_name}-{os.getpid()}"
             
-            # Service type for HTTP servers
-            service_type = "_http._tcp.local."
+            # Custom service type for HomeHub servers
+            service_type = "_homehub._tcp.local."
             service_name = f"{unique_server_name}.{service_type}"
             
             # Service properties (TXT records)

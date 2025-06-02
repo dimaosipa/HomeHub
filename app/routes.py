@@ -252,6 +252,9 @@ def server_info():
     from flask import current_app
     import socket
     
+    # Log the request for debugging
+    print(f"API Info request from: {request.remote_addr}, User-Agent: {request.headers.get('User-Agent', 'Unknown')}")
+    
     config = current_app.config.get('VOD_CONFIG', {})
     
     # Get server IP address
@@ -263,7 +266,7 @@ def server_info():
     except:
         server_ip = "localhost"
     
-    return jsonify({
+    response_data = {
         'server': {
             'name': config.get('server', {}).get('name', 'HomeHub'),
             'version': '1.0.0',
@@ -274,7 +277,7 @@ def server_info():
         },
         'discovery': {
             'bonjour_service': f"{config.get('discovery', {}).get('service_name', 'HomeHub')}.local",
-            'service_type': '_http._tcp.local.'
+            'service_type': '_homehub._tcp.local.'
         },
         'endpoints': {
             'videos': '/?format=json',
@@ -282,4 +285,21 @@ def server_info():
             'folders': '/folders',
             'refresh_cache': '/refresh'
         }
-    })
+    }
+    
+    # Create response with CORS headers
+    response = jsonify(response_data)
+    response.headers.add('Access-Control-Allow-Origin', '*')
+    response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization')
+    response.headers.add('Access-Control-Allow-Methods', 'GET,PUT,POST,DELETE,OPTIONS')
+    
+    return response
+
+@main_bp.route("/api/info", methods=['OPTIONS'])
+def server_info_options():
+    """Handle preflight OPTIONS requests for CORS"""
+    response = jsonify({'status': 'ok'})
+    response.headers.add('Access-Control-Allow-Origin', '*')
+    response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization')
+    response.headers.add('Access-Control-Allow-Methods', 'GET,PUT,POST,DELETE,OPTIONS')
+    return response

@@ -55,7 +55,3 @@
   ```sh
   pip freeze > requirements.txt
   ```
-
----
-
-*These instructions are for GitHub Copilot and developers working on this project.*

@@ -8,7 +8,8 @@ DEFAULT_VOD_CONFIG = {
     "server": {
         "port": 8080,
         "host": "0.0.0.0",
-        "debug": False
+        "debug": False,
+        "name": "HomeHub"  # Service name for discovery
     },
     "directories": {
         "videos": "../vids",
@@ -20,5 +21,9 @@ DEFAULT_VOD_CONFIG = {
     },
     "cache": {
         "ttl_seconds": 300
+    },
+    "discovery": {
+        "enabled": True,
+        "service_name": "HomeHub"
     }
 }

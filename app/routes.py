@@ -1,7 +1,7 @@
 """
 Route definitions for the VOD application.
 """
-from flask import Blueprint, render_template, send_from_directory, request, abort
+from flask import Blueprint, render_template, send_from_directory, request, abort, jsonify
 import os
 import urllib.parse
 import math
@@ -12,6 +12,37 @@ from app.utils.video_utils import generate_thumbnail
 
 # Create blueprint
 main_bp = Blueprint('main', __name__)
+
+# Helper function to detect JSON requests
+def wants_json():
+    """Check if the request wants JSON response"""
+    # Check for explicit format parameter
+    if request.args.get('format') == 'json':
+        return True
+    
+    # Check Accept header
+    return (request.headers.get('Accept', '').find('application/json') > 
+            request.headers.get('Accept', '').find('text/html'))
+
+# Helper function to format video data for JSON
+def format_video_for_json(video, base_url=''):
+    """Format video data for JSON response"""
+    return {
+        'id': video['rel_path'],  # Use relative path as ID
+        'name': video['filename'],
+        'path': video['rel_path'],
+        'size': video.get('size', 0),
+        'duration': video.get('duration', 'Unknown'),
+        'thumbnail_url': f"/thumb/{video['thumb']}" if video.get('thumb') else None,
+        'stream_url': f"/video/{urllib.parse.quote(video['rel_path'])}",
+        'folder': os.path.dirname(video['rel_path']) or None,
+        'modified_time': video.get('modified_time')
+    }
+
+# Helper function to format folders for JSON
+def format_folders_for_json(folders):
+    """Format folder data for JSON response"""
+    return [{'name': folder, 'path': folder} for folder in folders]
 
 # Access app config
 def get_config():
@@ -49,7 +80,7 @@ def setup_app_before_first_request():
 @main_bp.route("/")
 @main_bp.route("/folder/<path:folder>")
 def index(folder=''):
-    """Main page route handling folder navigation"""
+    """Main page route handling folder navigation with JSON support"""
     from flask import current_app
     config = current_app.config.get('VOD_CONFIG', {})
     
@@ -67,6 +98,21 @@ def index(folder=''):
     )
     folders = get_folders(root_dir)
     
+    # Return JSON if requested
+    if wants_json():
+        return jsonify({
+            'videos': [format_video_for_json(video) for video in pagination_data['videos']],
+            'folders': format_folders_for_json(folders),
+            'pagination': {
+                'current_page': pagination_data['current_page'],
+                'total_pages': pagination_data['total_pages'],
+                'total_videos': pagination_data['total_videos'],
+                'per_page': videos_per_page
+            },
+            'current_folder': pagination_data['current_folder']
+        })
+    
+    # Return HTML template for browser requests
     return render_template(
         "video_template.html",
         videos=pagination_data['videos'],
@@ -126,7 +172,7 @@ def refresh_cache():
 
 @main_bp.route("/search")
 def search():
-    """Search videos and folders by name"""
+    """Search videos and folders by name with JSON support"""
     from flask import current_app
     config = current_app.config.get('VOD_CONFIG', {})
     root_dir = os.path.abspath(config['directories']['videos'])
@@ -156,6 +202,24 @@ def search():
     folders = get_folders(root_dir)
     matched_folders = [f for f in folders if query in f.lower()]
 
+    # Return JSON if requested
+    if wants_json():
+        return jsonify({
+            'query': query,
+            'results': {
+                'videos': [format_video_for_json(video) for video in paginated_videos],
+                'folders': [{'name': folder, 'path': folder} for folder in matched_folders]
+            },
+            'pagination': {
+                'current_page': page,
+                'total_pages': total_pages,
+                'total_videos': total_videos,
+                'per_page': videos_per_page
+            },
+            'total_results': len(matched_videos) + len(matched_folders)
+        })
+
+    # Return HTML template for browser requests
     return render_template(
         "video_template.html",
         videos=paginated_videos,
@@ -167,3 +231,55 @@ def search():
         search_query=query,
         matched_folders=matched_folders
     )
+
+@main_bp.route("/folders")
+def list_folders():
+    """Get list of all folders (JSON only endpoint)"""
+    from flask import current_app
+    config = current_app.config.get('VOD_CONFIG', {})
+    root_dir = os.path.abspath(config['directories']['videos'])
+    
+    folders = get_folders(root_dir)
+    
+    return jsonify({
+        'folders': format_folders_for_json(folders),
+        'total_folders': len(folders)
+    })
+
+@main_bp.route("/api/info")
+def server_info():
+    """Get server information (JSON only endpoint)"""
+    from flask import current_app
+    import socket
+    
+    config = current_app.config.get('VOD_CONFIG', {})
+    
+    # Get server IP address
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("8.8.8.8", 80))
+        server_ip = s.getsockname()[0]
+        s.close()
+    except:
+        server_ip = "localhost"
+    
+    return jsonify({
+        'server': {
+            'name': config.get('server', {}).get('name', 'HomeHub'),
+            'version': '1.0.0',
+            'host': server_ip,
+            'port': config.get('server', {}).get('port', 8080),
+            'video_extensions': config['video']['extensions'],
+            'videos_per_page': config['video']['per_page']
+        },
+        'discovery': {
+            'bonjour_service': f"{config.get('discovery', {}).get('service_name', 'HomeHub')}.local",
+            'service_type': '_http._tcp.local.'
+        },
+        'endpoints': {
+            'videos': '/?format=json',
+            'search': '/search?format=json',
+            'folders': '/folders',
+            'refresh_cache': '/refresh'
+        }
+    })

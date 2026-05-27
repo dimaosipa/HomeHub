@@ -45,3 +45,13 @@ def test_index_and_search_routes(tmp_path, monkeypatch):
     assert res.status_code == 200
     assert b"a.mp4" in res.data
 
+
+def test_api_info_route(tmp_path, monkeypatch):
+    app = create_test_app(tmp_path, monkeypatch)
+    client = app.test_client()
+    res = client.get("/api/info")
+    assert res.status_code == 200
+    data = res.get_json()
+    assert data["video"]["per_page"] == 1
+    assert "directories" in data
+

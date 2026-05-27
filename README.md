@@ -163,6 +163,19 @@ Once running, access the server in your web browser:
 - Default URL: `http://localhost:8082/`
 - Replace 8082 with your configured port
 
+## API Endpoints
+
+### `/api/info`
+
+Returns JSON describing the running server configuration. Useful for quick
+diagnostics or to confirm the active settings.
+
+Example:
+
+```bash
+curl http://localhost:8082/api/info
+```
+
 ## Running Tests
 
 To run the automated test suite install the dependencies and execute `pytest`:

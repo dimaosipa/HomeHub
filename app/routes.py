@@ -167,3 +167,20 @@ def search():
         search_query=query,
         matched_folders=matched_folders
     )
+
+
+@main_bp.route("/api/info")
+def api_info():
+    """Return basic server configuration information."""
+    from flask import current_app, jsonify
+
+    config = current_app.config.get('VOD_CONFIG', {})
+    info = {
+        'environment': os.environ.get('FLASK_ENV', 'production'),
+        'directories': config.get('directories', {}),
+        'video': {
+            'extensions': config['video']['extensions'],
+            'per_page': config['video']['per_page']
+        }
+    }
+    return jsonify(info)

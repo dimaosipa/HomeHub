@@ -246,6 +246,24 @@ def list_folders():
         'total_folders': len(folders)
     })
 
+def _discovery_payload(config):
+    from app.utils.service_discovery import (
+        SERVICE_TYPE,
+        discovery_hostname_for,
+        get_discovery_status,
+    )
+
+    status = get_discovery_status()
+    if status:
+        return status
+
+    service_name = config.get('discovery', {}).get('service_name', 'HomeHub')
+    return {
+        'bonjour_service': discovery_hostname_for(service_name),
+        'service_type': SERVICE_TYPE,
+    }
+
+
 @main_bp.route("/api/info")
 def server_info():
     """Get server information (JSON only endpoint)"""
@@ -275,10 +293,7 @@ def server_info():
             'video_extensions': config['video']['extensions'],
             'videos_per_page': config['video']['per_page']
         },
-        'discovery': {
-            'bonjour_service': f"{config.get('discovery', {}).get('service_name', 'HomeHub')}.local",
-            'service_type': '_homehub._tcp.local.'
-        },
+        'discovery': _discovery_payload(config),
         'endpoints': {
             'videos': '/?format=json',
             'search': '/search?format=json',

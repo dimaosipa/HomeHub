@@ -21,6 +21,7 @@ def cleanup_service():
     if _service_discovery:
         from app.utils.service_discovery import stop_service_discovery
         stop_service_discovery()
+        _service_discovery = None
 
 def signal_handler(signum, frame):
     """Handle shutdown signals"""
@@ -128,20 +129,29 @@ def main():
         logging.info(f"- Supported extensions: {', '.join(config['video']['extensions'])}")
         logging.info(f"- Videos per page: {config['video']['per_page']}")
 
-        # Start service discovery
-        if not args.no_discovery and config.get('discovery', {}).get('enabled', True):
+        # Start service discovery (skip werkzeug reloader parent to avoid duplicate ads)
+        discovery_enabled = (
+            not args.no_discovery
+            and config.get('discovery', {}).get('enabled', True)
+            and (not debug_mode or os.environ.get('WERKZEUG_RUN_MAIN') == 'true')
+        )
+        if discovery_enabled:
             try:
                 from app.utils.service_discovery import start_service_discovery
-                service_name = config.get('discovery', {}).get('service_name', config['server'].get('name', 'HomeHub'))
+                service_name = config.get('discovery', {}).get(
+                    'service_name', config['server'].get('name', 'HomeHub')
+                )
                 _service_discovery = start_service_discovery(
                     config['server']['host'],
                     config['server']['port'],
-                    service_name
+                    service_name,
                 )
             except ImportError:
-                logging.warning("⚠️  Service discovery not available. Install 'zeroconf' package for network discovery.")
+                logging.warning(
+                    "Service discovery not available. Install the 'zeroconf' package for network discovery."
+                )
             except Exception as e:
-                logging.warning(f"⚠️  Service discovery failed: {e}")
+                logging.warning("Service discovery failed: %s", e)
 
         logging.info(f"\n🚀 Starting HomeHub server on {config['server']['host']}:{config['server']['port']}")
         

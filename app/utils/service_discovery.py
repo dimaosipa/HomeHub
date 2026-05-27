@@ -1,122 +1,142 @@
 """
 Service discovery utilities using Bonjour/mDNS
 """
+import logging
+import re
 import socket
-import threading
-import time
+from typing import Optional
+
 from zeroconf import ServiceInfo, Zeroconf
+
+logger = logging.getLogger(__name__)
+
+SERVICE_TYPE = "_homehub._tcp.local."
+
+
+def _sanitize_dns_label(name: str, fallback: str = "homehub") -> str:
+    """Normalize a string for use as an mDNS host/service label."""
+    label = name.strip().replace(" ", "-").replace("_", "-")
+    label = re.sub(r"[^a-zA-Z0-9-]", "-", label)
+    label = re.sub(r"-+", "-", label).strip("-").lower()
+    return (label or fallback)[:63]
+
+
+def _local_ip_for_discovery(bind_host: str) -> Optional[str]:
+    """Return the LAN address to publish in mDNS records."""
+    if bind_host not in ("0.0.0.0", "127.0.0.1", "::", "::1"):
+        return bind_host
+
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
+            sock.connect(("8.8.8.8", 80))
+            return sock.getsockname()[0]
+    except OSError:
+        return None
+
 
 class BonjourService:
     """Bonjour/mDNS service registration for HomeHub server"""
-    
+
     def __init__(self):
         self.zeroconf = None
         self.service_info = None
-        self._thread = None
         self._running = False
-        
+        self.registered_hostname = None
+        self.registered_service_name = None
+
     def register_service(self, host, port, server_name="HomeHub"):
         """
         Register the HomeHub service with Bonjour/mDNS
-        
+
         Args:
-            host (str): Server host/IP address
+            host (str): Server host/IP address Flask binds to
             port (int): Server port
             server_name (str): Display name for the service
         """
+        if host in ("127.0.0.1", "::1"):
+            logger.warning(
+                "Skipping Bonjour registration: server is bound to %s (not reachable on the LAN)",
+                host,
+            )
+            return
+
+        local_ip = _local_ip_for_discovery(host)
+        if not local_ip:
+            logger.error("Could not determine local IP address for Bonjour advertisement")
+            return
+
+        hostname_label = _sanitize_dns_label(server_name)
+        service_instance = f"{hostname_label}.{SERVICE_TYPE}"
+
+        properties = {
+            "name": server_name,
+            "type": "HomeHub VOD Server",
+            "version": "1.0.0",
+            "path": "/",
+            "api": "/api/info",
+        }
+        txt_properties = {k: str(v).encode("utf-8") for k, v in properties.items()}
+
         try:
-            # Get local IP address if host is 0.0.0.0
-            if host == "0.0.0.0":
-                # Get the local IP address
-                s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-                s.connect(("8.8.8.8", 80))
-                local_ip = s.getsockname()[0]
-                s.close()
-            else:
-                local_ip = host
-            
-            # Clean up server name for DNS compatibility and make unique
-            import os
-            clean_server_name = server_name.replace(' ', '-').replace('_', '-')
-            unique_server_name = f"{clean_server_name}-{os.getpid()}"
-            
-            # Custom service type for HomeHub servers
-            service_type = "_homehub._tcp.local."
-            service_name = f"{unique_server_name}.{service_type}"
-            
-            # Service properties (TXT records)
-            properties = {
-                'name': server_name,
-                'type': 'HomeHub VOD Server',
-                'version': '1.0.0',
-                'path': '/',
-                'api': '/api/info'
-            }
-            
-            # Convert string values to bytes for TXT records
-            txt_properties = {k: str(v).encode('utf-8') for k, v in properties.items()}
-            
-            # Create service info
             self.service_info = ServiceInfo(
-                service_type,
-                service_name,
+                SERVICE_TYPE,
+                service_instance,
                 addresses=[socket.inet_aton(local_ip)],
                 port=port,
                 properties=txt_properties,
-                server=f"{unique_server_name}.local."
+                server=f"{hostname_label}.local.",
             )
-            
-            # Initialize zeroconf
+
             self.zeroconf = Zeroconf()
-            
-            # Register the service in main thread to avoid threading issues
-            self._register_service_sync()
-            
-            print(f"✅ HomeHub service registered: {service_name}")
-            print(f"   Host: {local_ip}:{port}")
-            print(f"   Service: {service_type}")
-            print(f"   Discoverable as: {unique_server_name}.local")
-            
-        except Exception as e:
-            import traceback
-            print(f"❌ Failed to register Bonjour service: {e}")
-            print(f"Full traceback: {traceback.format_exc()}")
-    
-    def _register_service_sync(self):
-        """Register service synchronously"""
-        try:
-            self.zeroconf.register_service(self.service_info)
+            self.zeroconf.register_service(self.service_info, allow_name_change=True)
             self._running = True
-            print(f"✅ Service registration completed successfully")
-        except Exception as e:
-            import traceback
-            print(f"❌ Error in service registration: {e}")
-            print(f"Full traceback: {traceback.format_exc()}")
-    
+
+            registered_name = self.service_info.name or service_instance
+            if not registered_name.endswith("."):
+                registered_name = f"{registered_name}."
+            instance_label = registered_name[: -len(SERVICE_TYPE)].rstrip(".")
+            self.registered_hostname = f"{instance_label}.local"
+            self.registered_service_name = registered_name
+
+            logger.info("HomeHub Bonjour service registered: %s", registered_name)
+            logger.info("  Address: %s:%s", local_ip, port)
+            logger.info("  Hostname: %s", self.registered_hostname)
+        except Exception:
+            logger.exception("Failed to register Bonjour service")
+
     def unregister_service(self):
         """Unregister the service"""
+        self._running = False
+        if not self.zeroconf or not self.service_info:
+            return
+
         try:
-            self._running = False
-            if self.zeroconf and self.service_info:
-                self.zeroconf.unregister_service(self.service_info)
-                self.zeroconf.close()
-                print("✅ HomeHub service unregistered")
-        except Exception as e:
-            print(f"❌ Error unregistering service: {e}")
-    
+            self.zeroconf.unregister_service(self.service_info)
+            self.zeroconf.close()
+            logger.info("HomeHub Bonjour service unregistered")
+        except Exception:
+            logger.exception("Error unregistering Bonjour service")
+        finally:
+            self.zeroconf = None
+            self.service_info = None
+            self.registered_hostname = None
+            self.registered_service_name = None
+
     def __del__(self):
-        """Cleanup when object is destroyed"""
         self.unregister_service()
 
-# Global service instance
+
 _bonjour_service = None
+
 
 def start_service_discovery(host, port, server_name="HomeHub"):
     """Start Bonjour/mDNS service discovery"""
     global _bonjour_service
+    stop_service_discovery()
     _bonjour_service = BonjourService()
     _bonjour_service.register_service(host, port, server_name)
     return _bonjour_service
+
 
 def stop_service_discovery():
     """Stop Bonjour/mDNS service discovery"""
@@ -124,3 +144,20 @@ def stop_service_discovery():
     if _bonjour_service:
         _bonjour_service.unregister_service()
         _bonjour_service = None
+
+
+def discovery_hostname_for(server_name: str) -> str:
+    """Predict the Bonjour hostname when discovery has not started yet."""
+    return f"{_sanitize_dns_label(server_name)}.local"
+
+
+def get_discovery_status():
+    """Return active Bonjour registration details for API consumers."""
+    if not _bonjour_service or not _bonjour_service._running:
+        return None
+
+    return {
+        "bonjour_service": _bonjour_service.registered_hostname,
+        "service_type": SERVICE_TYPE,
+        "service_name": _bonjour_service.registered_service_name,
+    }

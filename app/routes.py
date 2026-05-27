@@ -235,8 +235,8 @@ def search():
 @main_bp.route("/folders")
 def list_folders():
     """Get list of all folders (JSON only endpoint)"""
-    from flask import current_app
-    config = current_app.config.get('VOD_CONFIG', {})
+    from app.config import get_config
+    config = get_config()
     root_dir = os.path.abspath(config['directories']['videos'])
     
     folders = get_folders(root_dir)
@@ -264,25 +264,27 @@ def _discovery_payload(config):
     }
 
 
+def _local_server_ip():
+    import socket
+
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
+            sock.connect(("8.8.8.8", 80))
+            return sock.getsockname()[0]
+    except OSError:
+        return "localhost"
+
+
 @main_bp.route("/api/info")
 def server_info():
     """Get server information (JSON only endpoint)"""
     from flask import current_app
-    import socket
-    
-    # Log the request for debugging
-    print(f"API Info request from: {request.remote_addr}, User-Agent: {request.headers.get('User-Agent', 'Unknown')}")
-    
-    config = current_app.config.get('VOD_CONFIG', {})
-    
-    # Get server IP address
-    try:
-        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        s.connect(("8.8.8.8", 80))
-        server_ip = s.getsockname()[0]
-        s.close()
-    except:
-        server_ip = "localhost"
+    from app.config import get_config
+
+    current_app.logger.debug("API info request from %s", request.remote_addr)
+
+    config = get_config()
+    server_ip = _local_server_ip()
     
     response_data = {
         'server': {

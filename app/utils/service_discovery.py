@@ -77,6 +77,7 @@ class BonjourService:
         }
         txt_properties = {k: str(v).encode("utf-8") for k, v in properties.items()}
 
+        self.zeroconf = None
         try:
             self.service_info = ServiceInfo(
                 SERVICE_TYPE,
@@ -94,8 +95,7 @@ class BonjourService:
             registered_name = self.service_info.name or service_instance
             if not registered_name.endswith("."):
                 registered_name = f"{registered_name}."
-            instance_label = registered_name[: -len(SERVICE_TYPE)].rstrip(".")
-            self.registered_hostname = f"{instance_label}.local"
+            self.registered_hostname = f"{hostname_label}.local"
             self.registered_service_name = registered_name
 
             logger.info("HomeHub Bonjour service registered: %s", registered_name)
@@ -103,6 +103,20 @@ class BonjourService:
             logger.info("  Hostname: %s", self.registered_hostname)
         except Exception:
             logger.exception("Failed to register Bonjour service")
+            self._clear_registration()
+
+    def _clear_registration(self):
+        """Release zeroconf resources without treating the service as active."""
+        if self.zeroconf:
+            try:
+                self.zeroconf.close()
+            except Exception:
+                logger.exception("Error closing Bonjour client after registration failure")
+        self.zeroconf = None
+        self.service_info = None
+        self._running = False
+        self.registered_hostname = None
+        self.registered_service_name = None
 
     def unregister_service(self):
         """Unregister the service"""
@@ -117,10 +131,7 @@ class BonjourService:
         except Exception:
             logger.exception("Error unregistering Bonjour service")
         finally:
-            self.zeroconf = None
-            self.service_info = None
-            self.registered_hostname = None
-            self.registered_service_name = None
+            self._clear_registration()
 
     def __del__(self):
         self.unregister_service()

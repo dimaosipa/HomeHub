@@ -52,6 +52,7 @@ def test_api_info_route(tmp_path, monkeypatch):
     res = client.get("/api/info")
     assert res.status_code == 200
     data = res.get_json()
-    assert data["video"]["per_page"] == 1
-    assert "directories" in data
+    assert data["server"]["videos_per_page"] == 1
+    assert "discovery" in data
+    assert "endpoints" in data
 

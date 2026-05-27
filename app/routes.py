@@ -235,16 +235,16 @@ def search():
 @main_bp.route("/folders")
 def list_folders():
     """Get list of all folders (JSON only endpoint)"""
-    from app.config import get_config
     config = get_config()
     root_dir = os.path.abspath(config['directories']['videos'])
-    
+
     folders = get_folders(root_dir)
-    
+
     return jsonify({
         'folders': format_folders_for_json(folders),
         'total_folders': len(folders)
     })
+
 
 def _discovery_payload(config):
     from app.utils.service_discovery import (
@@ -279,13 +279,12 @@ def _local_server_ip():
 def server_info():
     """Get server information (JSON only endpoint)"""
     from flask import current_app
-    from app.config import get_config
 
     current_app.logger.debug("API info request from %s", request.remote_addr)
 
     config = get_config()
     server_ip = _local_server_ip()
-    
+
     response_data = {
         'server': {
             'name': config.get('server', {}).get('name', 'HomeHub'),
@@ -303,14 +302,14 @@ def server_info():
             'refresh_cache': '/refresh'
         }
     }
-    
-    # Create response with CORS headers
+
     response = jsonify(response_data)
     response.headers.add('Access-Control-Allow-Origin', '*')
     response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization')
     response.headers.add('Access-Control-Allow-Methods', 'GET,PUT,POST,DELETE,OPTIONS')
-    
+
     return response
+
 
 @main_bp.route("/api/info", methods=['OPTIONS'])
 def server_info_options():

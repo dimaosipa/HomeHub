@@ -28,8 +28,13 @@ def create_app(test_config=None):
 
     # Load instance configuration if it exists
     if test_config is None:
-        # Load the instance config if it exists when not testing
-        app.config.from_pyfile('config.py', silent=True)
+        config_path = os.path.join(app.instance_path, 'config.py')
+        if os.path.exists(config_path):
+            try:
+                app.config.from_pyfile('config.py', silent=False)
+            except Exception as e:
+                print(f"ERROR: Failed to load {config_path}: {e}", file=sys.stderr)
+                sys.exit(1)
     else:
         # Load the test config if passed in
         app.config.from_mapping(test_config)
@@ -37,7 +42,13 @@ def create_app(test_config=None):
     # Support for environment-specific config
     env = os.environ.get('FLASK_ENV', 'production')
     if env != 'production':
-        app.config.from_pyfile(f'config.{env}.py', silent=True)
+        env_config = os.path.join(app.instance_path, f'config.{env}.py')
+        if os.path.exists(env_config):
+            try:
+                app.config.from_pyfile(f'config.{env}.py', silent=False)
+            except Exception as e:
+                print(f"ERROR: Failed to load {env_config}: {e}", file=sys.stderr)
+                sys.exit(1)
 
     # Ensure the instance folder exists
     try:

@@ -46,10 +46,27 @@ Download from [https://ffmpeg.org/download.html](https://ffmpeg.org/download.htm
 choco install ffmpeg
 ```
 
+
 **Verify Installation:**
 
 ```bash
 ffmpeg -version
+```
+
+## Installation
+
+Build the project into a wheel using [build](https://pypi.org/project/build/):
+
+```bash
+python -m pip install build
+python -m build --wheel
+```
+
+Install the generated wheel and start the server with the `homehub` command:
+
+```bash
+pip install dist/homehub-*.whl
+homehub
 ```
 
 ## Configuration System
